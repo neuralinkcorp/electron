@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Aidan <aidan.smith@neuralink.com>
+Date: Thu, 14 Mar 2024 13:08:15 -0400
+Subject: add system clock to perfnow
+
+
+diff --git a/third_party/blink/renderer/core/frame/local_dom_window.cc b/third_party/blink/renderer/core/frame/local_dom_window.cc
+index a393d149bd0b880ba30abbe43b89c48d2c351d96..7fdbbcec573adf7edb10a710ff4fce31c8331929 100644
+--- a/third_party/blink/renderer/core/frame/local_dom_window.cc
++++ b/third_party/blink/renderer/core/frame/local_dom_window.cc
+@@ -1677,6 +1677,9 @@ void LocalDOMWindow::setDefaultStatus(const String& string) {
+ String LocalDOMWindow::origin() const {
+   return GetSecurityOrigin()->ToString();
+ }
++bool LocalDOMWindow::isNeuralink() const {
++  return true;
++}
+
+ Document* LocalDOMWindow::document() const {
+   return document_.Get();
+diff --git a/third_party/blink/renderer/core/frame/local_dom_window.h b/third_party/blink/renderer/core/frame/local_dom_window.h
+index 54401bc692838bdc30cdd2ae71cbe7bdc71e38a6..68a7dc3fe4280cf8497be8a4c5f004a9349478c0 100644
+--- a/third_party/blink/renderer/core/frame/local_dom_window.h
++++ b/third_party/blink/renderer/core/frame/local_dom_window.h
+@@ -284,6 +284,8 @@ class CORE_EXPORT LocalDOMWindow final : public DOMWindow,
+   String defaultStatus() const;
+   void setDefaultStatus(const String&);
+   String origin() const;
++  bool isNeuralink() const;
+
+   // DOM Level 2 AbstractView Interface
+   Document* document() const;
+diff --git a/third_party/blink/renderer/core/frame/window.idl b/third_party/blink/renderer/core/frame/window.idl
+index 4e342b9b8faa0f1903fae02a2d12e2542d082db4..d5e4ce83f9cce6a9f65b7dd27effc5dd2a856627 100644
+--- a/third_party/blink/renderer/core/frame/window.idl
++++ b/third_party/blink/renderer/core/frame/window.idl
+@@ -98,6 +98,7 @@
+     // https://html.spec.whatwg.org/C/#windoworworkerglobalscope-mixin
+     // https://wicg.github.io/origin-policy/#monkeypatch-html-windoworworkerglobalscope
+     [Replaceable] readonly attribute DOMString origin;
++    [Replaceable] readonly attribute boolean isNeuralink;
+     void queueMicrotask(VoidFunction callback);
+
+     // AnimationFrameProvider mixin
+diff --git a/third_party/blink/renderer/core/timing/performance.cc b/third_party/blink/renderer/core/timing/performance.cc
+index 65e5fda89dab14723298191f9013c0c0f7ecd275..9dacfa20f96b451413fbb5592c342b31ba30f786 100644
+--- a/third_party/blink/renderer/core/timing/performance.cc
++++ b/third_party/blink/renderer/core/timing/performance.cc
+@@ -1279,6 +1279,10 @@ DOMHighResTimeStamp Performance::now() const {
+   return MonotonicTimeToDOMHighResTimeStamp(tick_clock_->NowTicks());
+ }
+
++DOMHighResTimeStamp Performance::nowWithoutTimeOrigin() const {
++  return (DOMHighResTimeStamp) base::Time::NowFromSystemTime().InSecondsFSinceUnixEpoch();
++}
++
+ // static
+ bool Performance::CanExposeNode(Node* node) {
+   if (!node || !node->isConnected() || node->IsInShadowTree())
+diff --git a/third_party/blink/renderer/core/timing/performance.h b/third_party/blink/renderer/core/timing/performance.h
+index 47aad416ba42c162edc9d6de4c8df849ab1b5ece..d8919481a67f25e8b4d93f5ffd885fbdb86b8ab1 100644
+--- a/third_party/blink/renderer/core/timing/performance.h
++++ b/third_party/blink/renderer/core/timing/performance.h
+@@ -135,6 +135,7 @@ class CORE_EXPORT Performance : public EventTarget {
+   // exposing to web.
+   DOMHighResTimeStamp MonotonicTimeToDOMHighResTimeStamp(base::TimeTicks) const;
+   DOMHighResTimeStamp now() const;
++  DOMHighResTimeStamp nowWithoutTimeOrigin() const;
+
+   // High Resolution Time Level 3 timeOrigin.
+   // (https://www.w3.org/TR/hr-time-3/#dom-performance-timeorigin)
+diff --git a/third_party/blink/renderer/core/timing/performance.idl b/third_party/blink/renderer/core/timing/performance.idl
+index 2380bac8994ba20a2ff25a19ab300a54a26defb5..6c42f1f7715deb31efa51723bb2d3141e2527bc7 100644
+--- a/third_party/blink/renderer/core/timing/performance.idl
++++ b/third_party/blink/renderer/core/timing/performance.idl
+@@ -36,6 +36,7 @@
+ [Exposed=(Window,Worker)]
+ interface Performance : EventTarget {
+     [Affects=Nothing] DOMHighResTimeStamp now();
++    [Affects=Nothing] DOMHighResTimeStamp nowWithoutTimeOrigin();
+     readonly attribute DOMHighResTimeStamp timeOrigin;
+
+     // Performance Timeline
